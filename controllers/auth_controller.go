@@ -11,6 +11,8 @@ import (
 
 	"firebase.google.com/go/v4/auth"
 	"github.com/ThinkBattleground/ThinkBattleground-Backend/config"
+	"github.com/ThinkBattleground/ThinkBattleground-Backend/database"
+	"github.com/ThinkBattleground/ThinkBattleground-Backend/models"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -44,7 +46,7 @@ func (ac *AuthController) SignUp(c *gin.Context) {
 	params := (&auth.UserToCreate{}).
 		Email(input.Email).
 		Password(input.Password).
-		EmailVerified(true)
+		EmailVerified(false) // Set email as unverified initially
 
 	user, err := ac.authClient.CreateUser(context.Background(), params)
 	if err != nil {
@@ -52,19 +54,25 @@ func (ac *AuthController) SignUp(c *gin.Context) {
 		return
 	}
 
-	// Create a custom token
-	token, err := ac.authClient.CustomToken(context.Background(), user.UID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating token"})
+	// Create user in database
+	dbUser := models.User{
+		FirebaseUID: user.UID,
+		Email:       user.Email,
+		IsAdmin:     false,
+	}
+
+	if result := database.DB.Create(&dbUser); result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user in database"})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "User created successfully",
-		"token":   token,
+		"message": "User created successfully. Please log in to get your token.",
 		"user": gin.H{
-			"uid":   user.UID,
-			"email": user.Email,
+			"uid":           user.UID,
+			"email":         user.Email,
+			"isAdmin":       false,
+			"emailVerified": false,
 		},
 	})
 }
@@ -171,12 +179,23 @@ func (ac *AuthController) GetUserProfile(c *gin.Context) {
 		return
 	}
 
+	var user models.User
+	if err := database.DB.Where("firebase_uid = ?", userId).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
 	// Here you can fetch user profile from your database
 	// For now, we'll just return the user ID
 	c.JSON(http.StatusOK, gin.H{
 		"userId": userId,
 		"profile": map[string]interface{}{
-			"id": userId,
+			"email":       user.Email,
+			"displayName": user.DisplayName,
+			"phone":       user.Phone,
+			"country":     user.Country,
+			"bio":         user.Bio,
+			"isAdmin":     user.IsAdmin,
 			// Add more profile fields as needed
 		},
 	})
@@ -332,24 +351,53 @@ func (ac *AuthController) HandleGoogleCallback(c *gin.Context) {
 		return
 	}
 
-	// Create or update Firebase user
-	params := (&auth.UserToCreate{}).
-		Email(person.EmailAddresses[0].Value).
-		DisplayName(person.Names[0].DisplayName)
-
-	if len(person.Photos) > 0 {
-		params = params.PhotoURL(person.Photos[0].Url)
-	}
-
-	user, err := ac.authClient.CreateUser(context.Background(), params)
+	// Get or create Firebase user
+	var user *auth.UserRecord
+	existingUser, err := ac.authClient.GetUserByEmail(context.Background(), person.EmailAddresses[0].Value)
 	if err != nil {
-		// If user already exists, try to get the user
-		existingUser, err := ac.authClient.GetUserByEmail(context.Background(), person.EmailAddresses[0].Value)
+		// User doesn't exist, create new user
+		params := (&auth.UserToCreate{}).
+			Email(person.EmailAddresses[0].Value).
+			EmailVerified(true). // Google OAuth users are pre-verified
+			DisplayName(person.Names[0].DisplayName)
+
+		if len(person.Photos) > 0 {
+			params = params.PhotoURL(person.Photos[0].Url)
+		}
+
+		user, err = ac.authClient.CreateUser(context.Background(), params)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create/get user"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
 		}
+	} else {
 		user = existingUser
+	}
+
+	// Create or update user in database
+	var dbUser models.User
+	result := database.DB.Where("firebase_uid = ?", user.UID).First(&dbUser)
+	if result.Error != nil {
+		// User doesn't exist in database, create new user
+		dbUser = models.User{
+			FirebaseUID: user.UID,
+			Email:       user.Email,
+			IsAdmin:     false,
+			DisplayName: user.DisplayName,
+			PhotoURL:    user.PhotoURL,
+		}
+		if err := database.DB.Create(&dbUser).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user in database"})
+			return
+		}
+	} else {
+		// Update existing user's information
+		dbUser.DisplayName = user.DisplayName
+		dbUser.PhotoURL = user.PhotoURL
+		if err := database.DB.Save(&dbUser).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user in database"})
+			return
+		}
 	}
 
 	// Create custom token
@@ -399,12 +447,14 @@ func (ac *AuthController) HandleGoogleCallback(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Google sign in successful",
-		"token":   idTokenResponse.IDToken, // Now returning the ID token instead of custom token
+		"token":   idTokenResponse.IDToken,
 		"user": gin.H{
-			"uid":         user.UID,
-			"email":       user.Email,
-			"displayName": user.DisplayName,
-			"photoURL":    user.PhotoURL,
+			"uid":           user.UID,
+			"email":         user.Email,
+			"displayName":   user.DisplayName,
+			"photoURL":      user.PhotoURL,
+			"isAdmin":       dbUser.IsAdmin,
+			"emailVerified": true,
 		},
 	})
 }

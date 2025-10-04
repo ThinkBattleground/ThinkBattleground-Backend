@@ -45,5 +45,16 @@ func InitializeRoutes(router *gin.Engine, app *firebase.App) {
 	{
 		protected.GET("/verify", authController.VerifyToken)
 		protected.GET("/profile", authController.GetUserProfile)
+		protected.PUT("/users/profile", authController.UpdateUserProfile)
+	}
+
+	// Admin routes
+	adminController := &controllers.AdminController{}
+	admin := router.Group("/api/v1/admin")
+	admin.Use(middleware.AuthMiddleware(authClient))
+	admin.Use(middleware.AdminMiddleware())
+	{
+		admin.POST("/users/make-admin", adminController.MakeUserAdmin)
+		admin.GET("/users", adminController.ListUsers)
 	}
 }
