@@ -3,15 +3,21 @@ package main
 import (
 	"log"
 
-	"github.com/gin-gonic/gin"
 	"github.com/ThinkBattleground/ThinkBattleground-Backend/config"
+	"github.com/ThinkBattleground/ThinkBattleground-Backend/database"
 	"github.com/ThinkBattleground/ThinkBattleground-Backend/routes"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	// Load environment variables
 	if err := config.LoadEnv(); err != nil {
 		log.Fatal("Failed to load .env file")
+	}
+
+	// Initialize database
+	if err := database.InitDB(); err != nil {
+		log.Fatal("Failed to initialize database: ", err)
 	}
 
 	// Initialize Gin router

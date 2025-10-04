@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: thinkbattleground-backend
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_net
+
+  db:
+    image: postgres:16
+    container_name: thinkbattleground-database
+    env_file:
+      - .env
+    ports:
+      - "5434:5432"
+    networks:
+      - app_net
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 5
+      start_period: 5s
+
+networks:
+  app_net:
+    driver: bridge
+
+volumes:
+  db_data:
