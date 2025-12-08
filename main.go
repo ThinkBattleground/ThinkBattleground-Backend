@@ -15,6 +15,11 @@ func main() {
 		log.Fatal("Failed to load .env file")
 	}
 
+	// Initialize Gemini
+	if err := config.InitializeGemini(); err != nil {
+		log.Fatal("Failed to initialize Gemini: ", err)
+	}
+
 	// Initialize database
 	if err := database.InitDB(); err != nil {
 		log.Fatal("Failed to initialize database: ", err)
