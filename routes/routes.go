@@ -20,7 +20,7 @@ func InitializeRoutes(router *gin.Engine, app *firebase.App) {
 
 	// Initialize controllers
 	authController := controllers.NewAuthController(authClient)
-	puzzleController := &controllers.PuzzleController{}
+	questionController := &controllers.QuestionController{}
 
 	// Public routes
 	public := router.Group("/api/v1")
@@ -48,9 +48,10 @@ func InitializeRoutes(router *gin.Engine, app *firebase.App) {
 		protected.GET("/profile", authController.GetUserProfile)
 		protected.PUT("/users/profile", authController.UpdateUserProfile)
 
-		// Puzzle routes
-		protected.GET("/puzzles", puzzleController.ListPuzzles)
-		protected.GET("/puzzles/:id", puzzleController.GetPuzzle)
+		// Question routes
+		protected.GET("/questions", questionController.ListQuestions)
+		protected.GET("/questions/:id", questionController.GetQuestion)
+		protected.GET("/questions/category/:category", questionController.GetQuestionsByCategory)
 	}
 
 	// Admin routes
@@ -62,7 +63,8 @@ func InitializeRoutes(router *gin.Engine, app *firebase.App) {
 		admin.POST("/users/make-admin", adminController.MakeUserAdmin)
 		admin.GET("/users", adminController.ListUsers)
 
-		// Puzzle management
-		admin.POST("/puzzles", puzzleController.CreatePuzzle)
+		// Question management
+		admin.POST("/questions/generate", questionController.CreateQuestionWithGemini)
+		admin.POST("/questions/create", questionController.CreateManualQuestion)
 	}
 }

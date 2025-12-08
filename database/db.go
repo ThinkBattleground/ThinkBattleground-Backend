@@ -6,6 +6,7 @@ import (
 
 	"github.com/ThinkBattleground/ThinkBattleground-Backend/config"
 	"github.com/ThinkBattleground/ThinkBattleground-Backend/models"
+	_ "github.com/lib/pq"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -28,7 +29,7 @@ func InitDB() error {
 	}
 
 	// Auto-migrate the models
-	if err = db.AutoMigrate(&models.User{}, &models.Puzzle{}); err != nil {
+	if err = db.AutoMigrate(&models.User{}, &models.Question{}); err != nil {
 		return fmt.Errorf("failed to migrate database: %v", err)
 	}
 
